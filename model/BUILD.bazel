@@ -1,0 +1,36 @@
+load("//bazel/rules/go_test:go_test.bzl", "mp_go_test")
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "dummy.go",
+        "model.go",
+    ],
+    importpath = "configmanager/model",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/src/configmap:go_default_library",
+        "//go/src/obs:go_default_library",
+        "//go/src/obs/obserr:go_default_library",
+    ],
+)
+
+mp_go_test(
+    name = "go_default_test",
+    size = "small",
+    srcs = ["model_test.go"],
+    args = [
+        "-test.v",
+        "-test.timeout=55s",
+    ],
+    embed = [":go_default_library"],
+    exec_compatible_with = ["//bazel/platforms:service_ubuntu"],
+    deps = [
+        "//go/src/configmap:go_default_library",
+        "//go/src/obs:go_default_library",
+        "//go/src/testutil:go_default_library",
+        "//go/src/vendor/github.com/stretchr/testify/assert:go_default_library",
+        "//go/src/vendor/github.com/stretchr/testify/require:go_default_library",
+    ],
+)
