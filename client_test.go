@@ -1,7 +1,6 @@
 package configmanager
 
 import (
-	"configmanager/model"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -10,8 +9,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-	"testutil"
 	"time"
+
+	"github.com/mixpanel/configmanager/testutil"
+
+	"github.com/mixpanel/configmanager/model"
 
 	"github.com/mixpanel/obs"
 

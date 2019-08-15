@@ -1,7 +1,6 @@
 package model
 
 import (
-	"configmap"
 	"encoding/json"
 	"errors"
 	"expvar"
@@ -9,6 +8,8 @@ import (
 	"io/ioutil"
 	"path"
 	"sync"
+
+	"github.com/mixpanel/configmanager/configmap"
 
 	"github.com/mixpanel/obs"
 	"github.com/mixpanel/obs/obserr"

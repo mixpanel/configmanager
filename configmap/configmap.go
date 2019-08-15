@@ -4,7 +4,8 @@ import (
 	"context"
 	"os"
 	"sync"
-	"testutil"
+
+	"github.com/mixpanel/configmanager/testutil"
 
 	"github.com/mixpanel/obs"
 	"github.com/mixpanel/obs/obserr"

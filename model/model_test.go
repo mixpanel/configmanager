@@ -1,7 +1,6 @@
 package model
 
 import (
-	"configmap"
 	"encoding/json"
 	"expvar"
 	"fmt"
@@ -10,6 +9,8 @@ import (
 	"os"
 	"path"
 	"testing"
+
+	"github.com/mixpanel/configmanager/configmap"
 
 	"github.com/mixpanel/obs"
 
