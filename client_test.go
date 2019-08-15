@@ -263,10 +263,10 @@ func TestProjectWhitelisted(t *testing.T) {
 	persist := &model.State{
 		Configs: []*model.Config{
 			cfg(t, "foo", map[int]struct{}{
-				3: struct{}{},
+				3: {},
 			}),
 			cfg(t, "foobar", map[string]struct{}{
-				"3": struct{}{},
+				"3": {},
 			}),
 			cfg(t, "bar", map[string]interface{}{
 				"idontparseasint": struct{}{},

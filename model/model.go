@@ -19,6 +19,9 @@ var (
 	ErrNotFound = errors.New("Config not found")
 )
 
+// Config is the struct configmanager expects
+// the configuration to be. When the file configs.json
+// is parsed, State manager expects an array of this struct.
 type Config struct {
 	Key         string          `json:"key"`
 	RawValue    json.RawMessage `json:"value"`
@@ -29,6 +32,8 @@ func (c *Config) String() string {
 	return string(c.RawValue)
 }
 
+// State is what is kept in memory by the statemanager
+// It is an exposed struct to support the dummy State manage\r
 type State struct {
 	Configs []*Config
 	cache   map[string]*Config
@@ -56,7 +61,7 @@ type stateManager struct {
 
 	mu    sync.RWMutex
 	cond  *sync.Cond
-	state *State
+	State *State
 
 	updateChan chan struct{}
 
@@ -65,6 +70,9 @@ type stateManager struct {
 	emap *expvar.Map
 }
 
+// Statemanager is responsible for managing
+// configmanager State. Configmanager client interacts
+// with Statemanager to get raw configs
 type StateManager interface {
 	GetKey(string) (*Config, error)
 	GetParsedValue(*Config) interface{}
@@ -89,6 +97,9 @@ func (n *NullStateManager) SetParsedValue(*Config, interface{}) {
 func (n *NullStateManager) Close() {
 }
 
+// NewStateManager returns the State manager which is used
+// by the configmanager client. State manager watches the file
+// for config changes and loads the State in memory.
 func NewStateManager(dirPath string, scope string, updateChan chan struct{}, fr obs.FlightRecorder) (StateManager, error) {
 	fr = fr.ScopeName("state_manager")
 
@@ -123,7 +134,7 @@ func (sm *stateManager) init(fr obs.FlightRecorder) error {
 
 	// wait for the initial loadConfig
 	sm.cond.L.Lock()
-	for sm.state == nil {
+	for sm.State == nil {
 		sm.cond.Wait()
 	}
 	sm.cond.L.Unlock()
@@ -150,22 +161,22 @@ func (sm *stateManager) loadConfig(filePath string) error {
 	if err != nil {
 		return obserr.Annotate(err, "Error reading the config file").Set("path", filePath)
 	}
-	state := &State{
+	State := &State{
 		cache: make(map[string]*Config),
 	}
-	if err := json.Unmarshal(data, &(state.Configs)); err != nil {
-		return obserr.Annotate(err, "error json unmarshal the state").Set("path", filePath)
+	if err := json.Unmarshal(data, &(State.Configs)); err != nil {
+		return obserr.Annotate(err, "error json unmarshal the State").Set("path", filePath)
 	}
-	return sm.loadState(state)
+	return sm.loadState(State)
 }
 
-func (sm *stateManager) loadState(state *State) error {
-	state.buildCache()
+func (sm *stateManager) loadState(State *State) error {
+	State.buildCache()
 	sm.mu.Lock()
-	sm.state = state
+	sm.State = State
 	sm.mu.Unlock()
 	sm.notify()
-	for _, cfg := range state.Configs {
+	for _, cfg := range State.Configs {
 		sm.emap.Set(cfg.Key, cfg)
 	}
 	return nil
@@ -181,7 +192,7 @@ func (sm *stateManager) notify() {
 func (sm *stateManager) GetKey(key string) (*Config, error) {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
-	return sm.state.get(key)
+	return sm.State.get(key)
 }
 
 func (sm *stateManager) Close() {

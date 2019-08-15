@@ -3,6 +3,7 @@ package configmanager
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -13,6 +14,9 @@ import (
 	"github.com/mixpanel/configmanager/model"
 )
 
+// Client is the interface for reading configs stored in configmap.
+// It has helper methods for different data types so the user
+// does not have to care about the structure of configs.
 type Client interface {
 	Unmarshal(key string, val interface{}) error
 	GetBoolean(key string, defaultVal bool) bool
@@ -50,14 +54,18 @@ func NewNullClient() Client {
 }
 
 // TestClient is to be used only for tests
-// It is threadsafe but it cant be used for production
+// It is threadsafe but it can NOT be used for production
+// Values can be set on the test client using the set
+// methods and then it echoes back those values in the Get
+// methods
 type TestClient struct {
 	*client
 	dm *model.DummyStateManager
 }
 
+// NewTestClient returns a TestClient
 func NewTestClient() *TestClient {
-	dm := model.NewDummyStateManager(&model.State{})
+	dm := model.NewDummyStateManager()
 	return &TestClient{
 		client: newClientFromStateManager(dm, obs.NullFR),
 		dm:     dm,
@@ -65,7 +73,11 @@ func NewTestClient() *TestClient {
 }
 
 func (t *TestClient) setValue(key string, val interface{}) *TestClient {
-	t.dm.SetConfig(&model.Config{Key: key, RawValue: t.dm.ToRawVal(val)})
+	data, err := json.Marshal(val)
+	if err != nil {
+		panic(fmt.Errorf("Error marshalling the value to json %v %v", val, err))
+	}
+	t.dm.SetConfig(&model.Config{Key: key, RawValue: data})
 	return t
 }
 
@@ -105,14 +117,14 @@ func (t *TestClient) SetByte(key string, val uint8) *TestClient {
 // NewClient returns a config manager client for a scope specified.
 // If you created the configs from the jsonnet config helper then your configs
 // will be placed like /etc/configs/storage-server/configs.
-// This client assumes that there will a file called configs for a scope
+// This client assumes that there will a file called configs.json for a scope
 // and inside the file there will be configs specified in the model
 // If there is an error initing the client, it will become a null client, return an error
 // and just return default values on the Gets
 // For your services instead of creating one type of config in a configmap, group all
 // of your configs into logical scope and create the configmap using the jsonnet helper.
 // With adoption of this client, you will at least every single service having
-// one scope with bunch of configs that are relevant to that service. Like lqs, dqs, etc
+// one scope with bunch of configs that are relevant to that service.
 func NewClient(dirPath string, scope string, fr obs.FlightRecorder) (Client, error) {
 	fr = fr.ScopeName("config_manager")
 	sm, err := model.NewStateManager(dirPath, scope, nil, fr)
