@@ -7,7 +7,7 @@ Configmanager does these things:
 
 Here is a possible example for a hypothetical service called my-service
 
-```
+```go
   cm, err := configmanager.NewClient("/etc/configs", "my-service", fr)
   if err != nil {
   	return err
