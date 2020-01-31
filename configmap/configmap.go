@@ -5,9 +5,9 @@ import (
 	"os"
 	"sync"
 
+	"github.com/mixpanel/configmanager/logger"
 	"github.com/mixpanel/configmanager/testutil"
 
-	"github.com/mixpanel/obs"
 	"github.com/mixpanel/obs/obserr"
 
 	"github.com/fsnotify/fsnotify"
@@ -27,11 +27,11 @@ type CmWatcher struct {
 	// used for tests
 	NotifyCounter *testutil.CallCounter
 
-	fr obs.FlightRecorder
+	logger logger.Logger
 }
 
 // NewCmWatcher() creates a new ConfigMap file watcher, which looks for changes to the file and invokes onFileEvent
-func NewCmWatcher(path string, onFileEvent OnFileEvent, fr obs.FlightRecorder) (*CmWatcher, error) {
+func NewCmWatcher(path string, onFileEvent OnFileEvent, logger logger.Logger) (*CmWatcher, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, obserr.Annotate(err, "Error while creating fsnotify watcher")
@@ -41,20 +41,20 @@ func NewCmWatcher(path string, onFileEvent OnFileEvent, fr obs.FlightRecorder) (
 		Path:        path,
 		onFileEvent: onFileEvent,
 		watcher:     watcher,
-		fr:          fr,
+		logger:      logger,
 	}
 
 	return w, nil
 }
 
-func NewCmWatcherForTest(path string, onFileEvent OnFileEvent, fr obs.FlightRecorder) (*CmWatcher, error) {
+func NewCmWatcherForTest(path string, onFileEvent OnFileEvent, logger logger.Logger) (*CmWatcher, error) {
 	c := testutil.NewCallCounter()
 	wrapped := func(p string) error {
 		defer c.Incr()
 		return onFileEvent(p)
 	}
 
-	w, err := NewCmWatcher(path, wrapped, fr)
+	w, err := NewCmWatcher(path, wrapped, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -91,17 +91,17 @@ func (w *CmWatcher) Stop() {
 }
 
 func (w *CmWatcher) startWatcher(ctx context.Context) {
-	fs := w.fr.WithSpan(ctx)
-
 	// force the callback once to make sure that file is processed in the event
 	// that no fsnotify events ever fired.
 	if err := w.onFileEvent(w.Path); err != nil {
-		fs.Warn("initial_on_file_event", "initial onFileEvent failed", obs.Vals{
-			"Path": w.Path,
-		}.WithError(err))
+		w.logger.Warn(
+			"initial onFileEvent failed",
+			"path", w.Path,
+			"err", err,
+		)
 		// fail open
 	}
-
+	logger := w.logger
 	for {
 		select {
 		case event, ok := <-w.watcher.Events:
@@ -115,31 +115,33 @@ func (w *CmWatcher) startWatcher(ctx context.Context) {
 			case fsnotify.Remove, fsnotify.Rename, fsnotify.Chmod:
 				w.watcher.Remove(event.Name)
 				if err := w.watcher.Add(event.Name); err != nil {
-					fs.Warn("error_reset", "error while resetting watch on config file", obs.Vals{
-						"Path": event.Name,
-					}.WithError(err))
+					logger.Warn(
+						"error while resetting watch on config file",
+						"path", event.Name,
+						"err", err,
+					)
 					continue
 				}
 				if err := w.onFileEvent(event.Name); err != nil {
-					fs.Warn("error_read", "could not read config file", obs.Vals{
-						"Path": event.Name,
-					}.WithError(err))
+					logger.Warn(
+						"could not read config file",
+						"path", event.Name,
+						"err", err,
+					)
 				}
 			case fsnotify.Create, fsnotify.Write:
 				if err := w.onFileEvent(event.Name); err != nil {
-					fs.Warn("error_read", "could not read config file", obs.Vals{
-						"Path": event.Name,
-					}.WithError(err))
+					logger.Warn(
+						"could not read config file",
+						"path", event.Name,
+						"err", err,
+					)
 				}
 			default:
-				fs.Debug("unhandled_fsnotify", obs.Vals{
-					"Path": event.Name,
-					"op":   event.Op,
-				})
 			}
 		case err, ok := <-w.watcher.Errors:
 			if err != nil {
-				fs.Warn("error_watching", "error while watching config file", obs.Vals{}.WithError(err))
+				logger.Warn("error while watching config file", err)
 			}
 			if !ok {
 				return

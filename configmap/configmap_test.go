@@ -8,9 +8,9 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/mixpanel/configmanager/logger"
 	"github.com/mixpanel/configmanager/testutil"
 
-	"github.com/mixpanel/obs"
 	"github.com/mixpanel/obs/obserr"
 
 	"github.com/stretchr/testify/assert"
@@ -33,7 +33,7 @@ func TestLoadConfigNoYaml(t *testing.T) {
 	t.Parallel()
 	testutil.WithTempDir(t, func(root string) {
 		cfgFile := path.Join(root, "config.yaml")
-		w, err := NewCmWatcher(cfgFile, nullOnFileEvent, obs.NullFR)
+		w, err := NewCmWatcher(cfgFile, nullOnFileEvent, logger.NullLogger{})
 		require.NoError(t, err, "expected NewCmWatcher to not error out when the file does not exist")
 		require.Error(t, w.Start(), "expected Start() to return an error when the file does not exist")
 	})
@@ -66,7 +66,7 @@ func TestConfigDynamicAdd(t *testing.T) {
 			return nil
 		}
 
-		w, err := NewCmWatcher(cfgFile, onNotify, obs.NullFR)
+		w, err := NewCmWatcher(cfgFile, onNotify, logger.NullLogger{})
 		require.NoError(t, err)
 
 		require.NoError(t, w.Start())
@@ -113,7 +113,7 @@ func TestConfigDynamicDelete(t *testing.T) {
 			return nil
 		}
 
-		w, err := NewCmWatcher(cfgFile, onNotify, obs.NullFR)
+		w, err := NewCmWatcher(cfgFile, onNotify, logger.NullLogger{})
 		require.NoError(t, err)
 
 		require.NoError(t, w.Start())

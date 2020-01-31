@@ -11,8 +11,7 @@ import (
 	"testing"
 
 	"github.com/mixpanel/configmanager/configmap"
-
-	"github.com/mixpanel/obs"
+	"github.com/mixpanel/configmanager/logger"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -107,11 +106,11 @@ func newStateManagerForTest(t *testing.T, root, scope string, ch chan struct{}) 
 		emap:     expvar.NewMap(fmt.Sprintf("configmanager.%s.%s", root, scope)),
 	}
 
-	w, err := configmap.NewCmWatcherForTest(sm.filePath, sm.loadConfig, obs.NullFR)
+	w, err := configmap.NewCmWatcherForTest(sm.filePath, sm.loadConfig, logger.NullLogger{})
 	require.NoError(t, err)
 	sm.watcher = w
 
-	require.NoError(t, sm.init(obs.NullFR))
+	require.NoError(t, sm.init(logger.NullLogger{}))
 	return sm
 }
 
