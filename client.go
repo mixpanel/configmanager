@@ -1,16 +1,15 @@
 package configmanager
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand"
 	"sync"
 	"time"
 
-	"github.com/mixpanel/obs"
 	"github.com/mixpanel/obs/obserr"
 
+	"github.com/mixpanel/configmanager/logger"
 	"github.com/mixpanel/configmanager/model"
 )
 
@@ -36,7 +35,7 @@ type Client interface {
 }
 
 type client struct {
-	fr          obs.FlightRecorder
+	logger      logger.Logger
 	sm          model.StateManager
 	unmarshalFn func([]byte, interface{}) error
 	rng         rnd
@@ -50,7 +49,7 @@ type rnd interface {
 // NewNullClient returns a client that will just
 // echo back the default value you set in your Gets
 func NewNullClient() Client {
-	return newClientFromStateManager(&model.NullStateManager{}, obs.NullFR)
+	return newClientFromStateManager(&model.NullStateManager{}, logger.NullLogger{})
 }
 
 // TestClient is to be used only for tests
@@ -67,7 +66,7 @@ type TestClient struct {
 func NewTestClient() *TestClient {
 	dm := model.NewDummyStateManager()
 	return &TestClient{
-		client: newClientFromStateManager(dm, obs.NullFR),
+		client: newClientFromStateManager(dm, logger.DefaultLogger),
 		dm:     dm,
 	}
 }
@@ -115,7 +114,7 @@ func (t *TestClient) SetByte(key string, val uint8) *TestClient {
 }
 
 // NewClient returns a config manager client for a scope specified.
-// If you created the configs from the jsonnet config helper then your configs
+// If you created the configs loggerom the jsonnet config helper then your configs
 // will be placed like /etc/configs/storage-server/configs.
 // This client assumes that there will a file called configs.json for a scope
 // and inside the file there will be configs specified in the model
@@ -125,21 +124,20 @@ func (t *TestClient) SetByte(key string, val uint8) *TestClient {
 // of your configs into logical scope and create the configmap using the jsonnet helper.
 // With adoption of this client, you will at least every single service having
 // one scope with bunch of configs that are relevant to that service.
-func NewClient(dirPath string, scope string, fr obs.FlightRecorder) (Client, error) {
-	fr = fr.ScopeName("config_manager")
-	sm, err := model.NewStateManager(dirPath, scope, nil, fr)
+func NewClient(dirPath string, scope string, logger logger.Logger) (Client, error) {
+	sm, err := model.NewStateManager(dirPath, scope, nil, logger)
 	if err != nil {
 		return nil, obserr.Annotate(err, "Error creating config manager client").Set(
 			"scope", scope,
 			"dir_path", dirPath,
 		)
 	}
-	return newClientFromStateManager(sm, fr), err
+	return newClientFromStateManager(sm, logger), err
 }
 
-func newClientFromStateManager(sm model.StateManager, fr obs.FlightRecorder) *client {
+func newClientFromStateManager(sm model.StateManager, logger logger.Logger) *client {
 	return &client{
-		fr:          fr,
+		logger:      logger,
 		sm:          sm,
 		unmarshalFn: json.Unmarshal,
 		rng:         defaultRng(time.Now().UnixNano()),
@@ -160,21 +158,23 @@ func (c *client) Unmarshal(key string, val interface{}) error {
 	return nil
 }
 
-func (c *client) logErrGet(err error, key string, defaultVal interface{}, fs obs.FlightSpan) {
+func (c *client) logErrGet(err error, key string, defaultVal interface{}, logger logger.Logger) {
 	if obserr.Original(err) == model.ErrNotFound {
 		// no log
 		return
 	}
-	fs.Warn("config_client_get", "Error while doing get", obs.Vals{
-		"key":           key,
-		"default_value": defaultVal,
-	}.WithError(err))
+	logger.Warn(
+		"error while doing get",
+		"key", key,
+		"default_value", defaultVal,
+		"err", err,
+	)
 }
 
 func (c *client) getByte(key string, defaultVal uint8) (uint8, error) {
 	config, err := c.sm.GetKey(key)
 	if err != nil {
-		return defaultVal, obserr.Annotate(err, "getByte: Error getting key from config")
+		return defaultVal, obserr.Annotate(err, "getByte: Error getting key loggerom config")
 	}
 	pv := c.sm.GetParsedValue(config)
 	if pv != nil {
@@ -193,22 +193,20 @@ func (c *client) getByte(key string, defaultVal uint8) (uint8, error) {
 }
 
 func (c *client) GetByte(key string, defaultVal uint8) uint8 {
-	fr := c.fr.ScopeName("get_byte")
-	fs := fr.WithSpan(context.Background())
+	logger := c.logger.ScopeName("get_byte")
 	val, err := c.getByte(key, defaultVal)
 	if err != nil {
-		c.logErrGet(err, key, defaultVal, fs)
+		c.logErrGet(err, key, defaultVal, logger)
 		return defaultVal
 	}
 	return val
 }
 
 func (c *client) GetBoolean(key string, defaultVal bool) bool {
-	fr := c.fr.ScopeName("get_boolean")
-	fs := fr.WithSpan(context.Background())
+	logger := c.logger.ScopeName("get_boolean")
 	val, err := c.getBoolean(key, defaultVal)
 	if err != nil {
-		c.logErrGet(err, key, defaultVal, fs)
+		c.logErrGet(err, key, defaultVal, logger)
 		return defaultVal
 	}
 	return val
@@ -217,7 +215,7 @@ func (c *client) GetBoolean(key string, defaultVal bool) bool {
 func (c *client) getBoolean(key string, defaultVal bool) (bool, error) {
 	config, err := c.sm.GetKey(key)
 	if err != nil {
-		return defaultVal, obserr.Annotate(err, "getBoolean: Error getting key from config")
+		return defaultVal, obserr.Annotate(err, "getBoolean: Error getting key loggerom config")
 	}
 	pv := c.sm.GetParsedValue(config)
 	if pv != nil {
@@ -235,11 +233,10 @@ func (c *client) getBoolean(key string, defaultVal bool) (bool, error) {
 }
 
 func (c *client) GetInt64(key string, defaultVal int64) int64 {
-	fr := c.fr.ScopeName("get_int64")
-	fs := fr.WithSpan(context.Background())
+	logger := c.logger.ScopeName("get_int64")
 	val, err := c.getInt64(key, defaultVal)
 	if err != nil {
-		c.logErrGet(err, key, defaultVal, fs)
+		c.logErrGet(err, key, defaultVal, logger)
 		return defaultVal
 	}
 	return val
@@ -248,7 +245,7 @@ func (c *client) GetInt64(key string, defaultVal int64) int64 {
 func (c *client) getInt64(key string, defaultVal int64) (int64, error) {
 	config, err := c.sm.GetKey(key)
 	if err != nil {
-		return defaultVal, obserr.Annotate(err, "getInt64: error getting key from config")
+		return defaultVal, obserr.Annotate(err, "getInt64: error getting key loggerom config")
 	}
 	pv := c.sm.GetParsedValue(config)
 	if pv != nil {
@@ -270,11 +267,10 @@ func (c *client) getInt64(key string, defaultVal int64) (int64, error) {
 }
 
 func (c *client) GetFloat64(key string, defaultVal float64) float64 {
-	fr := c.fr.ScopeName("get_float64")
-	fs := fr.WithSpan(context.Background())
+	logger := c.logger.ScopeName("get_float64")
 	val, err := c.getFloat64(key, defaultVal)
 	if err != nil {
-		c.logErrGet(err, key, defaultVal, fs)
+		c.logErrGet(err, key, defaultVal, logger)
 		return defaultVal
 	}
 	return val
@@ -304,11 +300,10 @@ func (c *client) getFloat64(key string, defaultVal float64) (float64, error) {
 }
 
 func (c *client) GetString(key string, defaultVal string) string {
-	fr := c.fr.ScopeName("get_string")
-	fs := fr.WithSpan(context.Background())
+	logger := c.logger.ScopeName("get_string")
 	val, err := c.getString(key, defaultVal)
 	if err != nil {
-		c.logErrGet(err, key, defaultVal, fs)
+		c.logErrGet(err, key, defaultVal, logger)
 		return defaultVal
 	}
 	return val
@@ -365,20 +360,20 @@ func (c *client) rollDie(name string, enabledByDefault bool) bool {
 }
 
 func (c *client) IsProjectWhitelisted(key string, projectID int64, defaultVal bool) bool {
-	fs := c.fr.ScopeName("is_project_whitelisted").WithSpan(context.Background())
+	logger := c.logger.ScopeName("is_project_whitelisted")
 	val, err := c.isProjectWhitelisted(key, projectID, defaultVal)
 	if err != nil {
-		c.logErrGet(err, key, defaultVal, fs)
+		c.logErrGet(err, key, defaultVal, logger)
 		return defaultVal
 	}
 	return val
 }
 
 func (c *client) IsTokenWhitelisted(key string, token string, defaultVal bool) bool {
-	fs := c.fr.ScopeName("is_token_whitelisted").WithSpan(context.Background())
+	logger := c.logger.ScopeName("is_token_whitelisted")
 	val, err := c.isTokenWhitelisted(key, token, defaultVal)
 	if err != nil {
-		c.logErrGet(err, key, defaultVal, fs)
+		c.logErrGet(err, key, defaultVal, logger)
 		return defaultVal
 	}
 	return val
@@ -387,7 +382,7 @@ func (c *client) IsTokenWhitelisted(key string, token string, defaultVal bool) b
 func (c *client) isTokenWhitelisted(key string, token string, defaultVal bool) (bool, error) {
 	config, err := c.sm.GetKey(key)
 	if err != nil {
-		return defaultVal, obserr.Annotate(err, "isTokenWhitelisted: error getting key from sm")
+		return defaultVal, obserr.Annotate(err, "isTokenWhitelisted: error getting key loggerom sm")
 	}
 	pv := c.sm.GetParsedValue(config)
 	if pv != nil {
@@ -410,7 +405,7 @@ func (c *client) isTokenWhitelisted(key string, token string, defaultVal bool) (
 func (c *client) isProjectWhitelisted(key string, projectID int64, defaultVal bool) (bool, error) {
 	config, err := c.sm.GetKey(key)
 	if err != nil {
-		return defaultVal, obserr.Annotate(err, "isProjectWhitelisted: error getting key from sm")
+		return defaultVal, obserr.Annotate(err, "isProjectWhitelisted: error getting key loggerom sm")
 	}
 	pv := c.sm.GetParsedValue(config)
 	if pv != nil {

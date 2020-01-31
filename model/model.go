@@ -10,8 +10,8 @@ import (
 	"sync"
 
 	"github.com/mixpanel/configmanager/configmap"
+	"github.com/mixpanel/configmanager/logger"
 
-	"github.com/mixpanel/obs"
 	"github.com/mixpanel/obs/obserr"
 )
 
@@ -100,28 +100,28 @@ func (n *NullStateManager) Close() {
 // NewStateManager returns the State manager which is used
 // by the configmanager client. State manager watches the file
 // for config changes and loads the State in memory.
-func NewStateManager(dirPath string, scope string, updateChan chan struct{}, fr obs.FlightRecorder) (StateManager, error) {
-	fr = fr.ScopeName("state_manager")
+func NewStateManager(dirPath string, scope string, updateChan chan struct{}, logger logger.Logger) (StateManager, error) {
+	logger = logger.ScopeName("state_manager")
 
 	sm := &stateManager{
 		filePath: path.Join(dirPath, scope, "configs.json"),
 		emap:     expvar.NewMap(fmt.Sprintf("configmanager.%s", scope)),
 	}
 
-	cmWatcher, err := configmap.NewCmWatcher(sm.filePath, sm.loadConfig, fr)
+	cmWatcher, err := configmap.NewCmWatcher(sm.filePath, sm.loadConfig, logger)
 	if err != nil {
 		return nil, obserr.Annotate(err, "Error making cm watcher for the config manager").Set("path", sm.filePath)
 	}
 	sm.watcher = cmWatcher
 
-	if err := sm.init(fr); err != nil {
+	if err := sm.init(logger); err != nil {
 		return nil, obserr.Annotate(err, "init failed")
 	}
 
 	return sm, nil
 }
 
-func (sm *stateManager) init(fr obs.FlightRecorder) error {
+func (sm *stateManager) init(logger logger.Logger) error {
 	if sm.updateChan == nil {
 		// just make a dummy chan
 		sm.updateChan = make(chan struct{})

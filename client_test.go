@@ -11,11 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mixpanel/configmanager/logger"
 	"github.com/mixpanel/configmanager/testutil"
 
 	"github.com/mixpanel/configmanager/model"
-
-	"github.com/mixpanel/obs"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -67,7 +66,7 @@ func TestUnmarshal(t *testing.T) {
 
 	ns := getNs()
 	writePersistToFile(t, persist, dir, ns)
-	client, err := NewClient(dir, ns, obs.NullFR)
+	client, err := NewClient(dir, ns, logger.NullLogger{})
 	assert.NoError(t, err)
 	actual := &testStruct{}
 	assert.NoError(t, client.Unmarshal("bar", actual))
@@ -106,7 +105,7 @@ func withFixture(t *testing.T, persist *model.State, fn func(f *fixture)) {
 	ns := getNs()
 	writePersistToFile(t, persist, dir, ns)
 
-	c, err := NewClient(dir, ns, obs.NullFR)
+	c, err := NewClient(dir, ns, logger.NullLogger{})
 	require.NoError(t, err)
 	defer c.Close()
 
